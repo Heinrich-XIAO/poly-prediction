@@ -1,0 +1,28 @@
+# Category tags known to Polymarket's Gamma API.
+# Group broader categories from individual tags.
+
+groups:
+  sports:
+    tags: [soccer, nba, nfl, mlb, ufc, tennis, cricket, boxing, nhl, golf, formula1, rugby]
+  crypto:
+    tags: [crypto, bitcoin, ethereum, defi, nft]
+  politics:
+    tags: [politics, us-politics, election]
+  weather:
+    tags: [weather, climate, natural-disaster]
+  entertainment:
+    tags: [entertainment, pop-culture, awards, movies, music, tv, gaming]
+  economics:
+    tags: [economics, finance, markets, inflation, interest-rates]
+  technology:
+    tags: [technology, tech, ai, space, science]
+
+# Default bar frequency per group (some benefit from finer granularity)
+freq_defaults:
+  sports: "1min"
+  crypto: "5min"
+  politics: "1h"
+  weather: "1h"
+  entertainment: "5min"
+  economics: "1h"
+  technology: "1h"

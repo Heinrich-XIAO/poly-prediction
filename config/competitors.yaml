@@ -1,0 +1,39 @@
+# Registered strategies for the competition runner.
+# Each entry: name, class path, default params, category tags, description.
+
+strategies:
+  - name: buy_and_hold
+    class: strategies.builtin.buy_and_hold:BuyAndHold
+    params:
+      allocation_pct: 0.95
+    tags: [soccer, nba, crypto, politics, weather]
+    description: Buy once on first bar, hold to end.
+
+  - name: momentum_sma
+    class: strategies.builtin.momentum:MomentumSMA
+    params:
+      lookback: 20
+      entry_threshold: 0.02
+      exit_threshold: 0.02
+      position_size_usd: 100.0
+    tags: [soccer, nba, crypto]
+    description: SMA crossover momentum with take-profit.
+
+  - name: buy_and_hold_tp20
+    class: strategies.builtin.buy_and_hold:BuyAndHold
+    params:
+      allocation_pct: 0.95
+    tags: [soccer, nba, crypto, politics, weather]
+    description: Buy-and-hold wrapped with 20% take-profit.
+    cash_out:
+      take_profit_pct: 0.20
+
+  - name: buy_and_hold_tp50_sl25
+    class: strategies.builtin.buy_and_hold:BuyAndHold
+    params:
+      allocation_pct: 0.95
+    tags: [soccer, nba, crypto, politics, weather]
+    description: Buy-and-hold with 50% TP and 25% stop-loss.
+    cash_out:
+      take_profit_pct: 0.50
+      stop_loss_pct: -0.25

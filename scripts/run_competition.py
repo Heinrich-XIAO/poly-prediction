@@ -29,6 +29,7 @@ from src.data.fetcher import build_ohlc
 def _register_builtins():
     from strategies.builtin.buy_and_hold import BuyAndHold
     from strategies.builtin.momentum import MomentumSMA
+    from strategies.originals.momentum_trailing import MomentumAdaptive
 
     register(StrategyRecord(
         name="buy_and_hold", strategy_class=BuyAndHold,
@@ -41,6 +42,12 @@ def _register_builtins():
         default_params={"lookback": 20, "entry_threshold": 0.02, "exit_threshold": 0.02, "position_size_usd": 100.0},
         category_tags=["soccer", "nba", "crypto"],
         description="SMA crossover momentum.",
+    ))
+    register(StrategyRecord(
+        name="mom_adaptive", strategy_class=MomentumAdaptive,
+        default_params={},
+        category_tags=["soccer", "nba", "crypto", "politics"],
+        description="Momentum SMA entry + 8% trailing/SMA exit.",
     ))
 
 

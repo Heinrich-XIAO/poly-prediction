@@ -27,9 +27,14 @@ from src.data.fetcher import build_ohlc
 
 
 def _register_builtins():
+    import importlib
+    import inspect
+
+    from src.strategy.base import Strategy
+
+    # Manual register for builtins
     from strategies.builtin.buy_and_hold import BuyAndHold
     from strategies.builtin.momentum import MomentumSMA
-    from strategies.originals.momentum_trailing import MomentumAdaptive
 
     register(StrategyRecord(
         name="buy_and_hold", strategy_class=BuyAndHold,
@@ -43,12 +48,34 @@ def _register_builtins():
         category_tags=["soccer", "nba", "crypto"],
         description="SMA crossover momentum.",
     ))
-    register(StrategyRecord(
-        name="mom_adaptive", strategy_class=MomentumAdaptive,
-        default_params={},
-        category_tags=["soccer", "nba", "crypto", "politics"],
-        description="Momentum SMA entry + 8% trailing/SMA exit.",
-    ))
+
+    # Auto-discover strategies from originals/ and hybrids/
+    all_tags = ["soccer", "nba", "crypto", "politics", "weather"]
+    for directory in ("strategies/originals", "strategies/hybrids"):
+        p = Path(__file__).resolve().parents[1] / directory
+        if not p.is_dir():
+            continue
+        for f in sorted(p.glob("*.py")):
+            if f.name == "__init__.py":
+                continue
+            module_path = f"strategies.{p.name}.{f.stem}"
+            try:
+                mod = importlib.import_module(module_path)
+            except Exception as exc:
+                logging.warning("failed to import %s: %s", module_path, exc)
+                continue
+            for name, obj in inspect.getmembers(mod):
+                if not inspect.isclass(obj) or not issubclass(obj, Strategy) or obj is Strategy:
+                    continue
+                if name.startswith("_"):
+                    continue
+                register(StrategyRecord(
+                    name=f.name.replace(".py", ""),
+                    strategy_class=obj,
+                    default_params={},
+                    category_tags=all_tags,
+                    description=(obj.__doc__ or mod.__doc__ or "").strip() or f"Auto-discovered from {module_path}",
+                ))
 
 
 _MIN_BARS = 20

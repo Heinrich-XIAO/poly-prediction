@@ -33,6 +33,9 @@ _PAGE_SIZE = 500
 _MAX_RETRIES = 5
 _BACKOFF_BASE = 0.5
 
+# SOCKS5 proxy to bypass GFW
+_PROXY_URL = "socks5://185.103.103.140:1080"
+
 
 # ---------- Markets ----------
 
@@ -53,7 +56,7 @@ async def fetch_markets(
     """
     own_client = client is None
     if own_client:
-        client = httpx.AsyncClient(timeout=30.0)
+        client = httpx.AsyncClient(timeout=30.0, proxy=_PROXY_URL)
     try:
         markets: list[Market] = []
         offset = 0
@@ -140,7 +143,7 @@ async def fetch_trades(
     """
     own_client = client is None
     if own_client:
-        client = httpx.AsyncClient(timeout=30.0)
+        client = httpx.AsyncClient(timeout=30.0, proxy=_PROXY_URL)
     since_ts = int(since.timestamp()) if since else None
     until_ts = int(until.timestamp()) if until else None
 

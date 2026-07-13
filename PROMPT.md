@@ -50,7 +50,7 @@ Record which tags succeeded — you'll use them later.
 
 ## Step 3: Run the baseline competition
 
-The competition tests every strategy on **every market** in the category with enough trade data. A strategy that only wins on one market will not rank well — it must perform consistently across many markets.
+The competition tests every strategy on **every resolved past market** in the category with enough trade data. A strategy that only wins on one market will not rank well — it must perform consistently across many markets.
 
 Run the competition on the tag with data:
 ```bash

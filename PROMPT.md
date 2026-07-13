@@ -145,6 +145,8 @@ Print the final results:
 - Its return and Sharpe vs every competitor
 - The key insight that made it work
 
+Make sure to write this in `agent_summaries/AGENT_<the current maximum number in there+1>.md`. If there is not a single file in there, start it at 0.
+
 ---
 
 ## Reference: Available tools

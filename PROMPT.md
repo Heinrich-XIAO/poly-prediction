@@ -52,7 +52,7 @@ Record which tags succeeded — you'll use them later.
 
 Run the competition on the tag with data:
 ```bash
-python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000
 ```
 
 Replace `soccer` with whichever tag succeeded. Record:
@@ -113,7 +113,7 @@ register(StrategyRecord(
 
 Run the competition:
 ```bash
-python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000
 ```
 
 ## Step 7: Iterate

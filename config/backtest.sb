@@ -1,0 +1,49 @@
+(version 1)
+
+;; Start permissive — deny-default is too fragile on macOS (breaks os.uname(), etc.)
+(allow default)
+
+;; =====================================================================
+;; DENY: Sensitive file reads
+;; =====================================================================
+
+;; SSH keys and config
+(deny file-read* (subpath "/Users/heinrich/.ssh"))
+(deny file-read* (subpath "/private/etc/ssh"))
+
+;; Cloud credentials
+(deny file-read* (subpath "/Users/heinrich/.aws"))
+(deny file-read* (subpath "/Users/heinrich/.config/gcloud"))
+
+;; GPG keys
+(deny file-read* (subpath "/Users/heinrich/.gnupg"))
+
+;; Shell history
+(deny file-read* (literal "/Users/heinrich/.bash_history")
+                 (literal "/Users/heinrich/.zsh_history")
+                 (literal "/Users/heinrich/.zhistory"))
+
+;; macOS keychain
+(deny file-read* (subpath "/Users/heinrich/Library/Keychains"))
+
+;; =====================================================================
+;; DENY: File writes outside allowed directories
+;; =====================================================================
+
+(deny file-write* (subpath "/Users/heinrich"))
+
+;; Re-allow writes to the project data dir (for leaderboard DB)
+(allow file-write* (subpath "/Users/heinrich/Documents/poly-prediction/data"))
+
+;; =====================================================================
+;; DENY: Process forking (prevents subprocess/shell from strategy code)
+;; =====================================================================
+
+(deny process-fork)
+
+;; =====================================================================
+;; DENY: Network access (prevents data exfiltration from strategy code)
+;; =====================================================================
+
+(deny network-outbound)
+(deny network-inbound)

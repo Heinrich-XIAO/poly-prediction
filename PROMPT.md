@@ -135,7 +135,7 @@ Judging is based on the **aggregate leaderboard** — Total Return across all ma
 - If it doesn't → create a new one. Try different indicators, parameter combinations, or a different approach entirely
 - Try wrapping with cash-out: `with_cash_out(MyStrategy(), take_profit_pct=0.20, stop_loss_pct=-0.25)`
 - Try different categories — your strategy might dominate in crypto but not soccer
-- Use `--max-markets 50` for a broad test or `--max-markets 5` for a quick sanity check
+- Use `--max-markets 50` for a broad test (your final test must be with 50 tests, otherwise, you have not truly beaten your competitors) or `--max-markets 5` for a quick sanity check
 - Stop when no improvement has been made for 3 consecutive rounds
 
 ## Step 8: Deliver

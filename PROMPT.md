@@ -1,25 +1,139 @@
-Your end goal, is to create an algorithm that is profitable on polymarket. However, immediately running on polymarket is too risky, so instead, you will run this command to backtest:
+# Goal
+
+Create a profitable Polymarket trading strategy. Do not trade live — prove it via backtest. Beat every competitor registered in the competition runner.
+
+---
+
+## Step 1: Setup
+
 ```bash
-python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt && python -m src.cli.main fetch --tag soccer --with-trades --since 2026-06-01 && python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
+# Check if venv exists
+ls .venv/bin/activate 2>/dev/null && echo "venv exists" || echo "need to create venv"
 ```
 
-In the directory that you are currently in, there are a number of strategies. These are your competitors. You must beat these competitors by outperforming them. Look at what they're doing, combine them, modify them, improve on them and iterate upon them, or just make your own one.
+If venv doesn't exist:
+```bash
+python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+```
 
-It is hard to come by original ideas, since your competitors are running similarly archetected AI models, so curl https://random-words-api.kushcreates.com/api?words=5 to get five random words to inspire yourself. Your strategy doesn't have to relate to the words directly. For example, if one of the words is condensation, you might try to implement regime changes since condensation goes from gaseous to liquid. Of course, you want to be as different as possible, so actually implementing a regime change would be incredibly lazy.
+If venv exists:
+```bash
+source .venv/bin/activate
+```
 
-Polymarket tends to not have the best category separation, so try to check whether your strategy works well on only a subset of the markets in a certain category and what similarities they have with eachother. Sometimes, it might just be that they're completely different. Or, it might just be that the only difference between the two types of markets is that one of them resolves yes and one of them resolves no and so your strategy only works with one of them.
+Verify imports work:
+```bash
+python -c "from strategies.base import CashOutStrategy; print('OK')"
+```
 
-Try to find areas with little to no competition. This is where the five random words come in. If one of the words is cloud, you might try to look into the weather category of prediction. Weather has a completely different distribution then other categories. For example, hottest temperature in a day in a certain city usually is certain after a certain point since the warmest time of day is usually a bit after noon.
+## Step 2: Fetch market data
 
-Do research. The niches often require a bit of research. Maybe one sports team always plays against a certain other team. If you heard that online, maybe analyze some statistics on whether or not that's actually true. Rumours are often not as reliable as you think, and when rumours are false, prices follow the rumour, but resolution always follows the truth.
+Fetch at least one tag. Pick the first tag that succeeds:
+```bash
+python -m src.cli.main fetch --tag soccer --with-trades --since 2026-06-01
+```
 
-NEVER BE TOO CONFIDENT. Doubt everything that you haven't explicitly checked.
+If that fails or returns nothing, try the next:
+```bash
+python -m src.cli.main fetch --tag crypto --with-trades --since 2026-06-01
+python -m src.cli.main fetch --tag politics --with-trades --since 2026-06-01
+python -m src.cli.main fetch --tag weather --with-trades --since 2026-06-01
+python -m src.cli.main fetch --tag nba --with-trades --since 2026-06-01
+```
 
-CASHING OUT IS IMPORTANT. It is often that people predict then hold. That's usually a bad strategy, because you're relying on the information from one time. Use `strategies/base.py`'s `with_cash_out(strategy, take_profit_pct=0.20, stop_loss_pct=-0.25)` to add exit logic to any strategy.
+Stop when at least one tag has cached data (verify with `list` command):
+```bash
+python -m src.cli.main list --tag soccer --limit 5
+```
 
-How polymarket works: First, you can buy shares. You can buy Yes, and you can buy No. In the end, all markets resolve to either Yes or No. If you bet on the wrong one, you lose all of your investment. If you bet on the right one, you get $1 per share, so you gain the differce between $1 and the initial price of one share. The big difference between this and a binary option, is that you CAN cash out in the middle.
+Record which tags succeeded — you'll use them later.
 
-## Available tools
+## Step 3: Run the baseline competition
+
+Run the competition on the tag with data:
+```bash
+python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
+```
+
+Replace `soccer` with whichever tag succeeded. Record:
+- The current leader's name, return %, and Sharpe ratio
+- This is the score you must beat
+
+## Step 4: Get inspired
+
+Fetch 5 random words:
+```bash
+curl https://random-words-api.kushcreates.com/api?words=5
+```
+
+Map them to strategy concepts. For example, "cloud" → weather markets, "rust" → mean-reversion, "tide" → cyclic patterns.
+
+You can also analyze which categories your competitors are weak in — try different `--tag` values with `run_competition.py` to see where each strategy loses.
+
+## Step 5: Create a strategy
+
+Write a new file in `strategies/originals/` or `strategies/hybrids/`. Your strategy must:
+
+1. Subclass `CashOutStrategy` from `strategies/base.py`
+2. Implement `_on_bar(self, bar, portfolio) -> list[Order]`
+3. Use the indicator helpers and numpy arrays (see "Available tools" below)
+
+Example skeleton:
+```python
+from strategies.base import CashOutStrategy
+from src.strategy.base import Bar, Order, PortfolioView, Side
+from typing import Iterable
+import numpy as np
+
+class MyStrategy(CashOutStrategy):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def _on_bar(self, bar: Bar, portfolio: PortfolioView) -> Iterable[Order]:
+        if self.n_bars < 20:
+            return []
+        if bar.close < self.sma(20) * 0.95:
+            return [Order(token_id=bar.token_id, side=Side.BUY,
+                          size=100 / bar.close, reason="entry")]
+        return []
+```
+
+## Step 6: Register and test
+
+Edit `scripts/run_competition.py` — add your strategy to `_register_builtins()`:
+```python
+from strategies.originals.my_strategy import MyStrategy
+register(StrategyRecord(
+    name="my_strategy", strategy_class=MyStrategy,
+    default_params={},
+    category_tags=["soccer", "crypto"],
+    description="My custom strategy.",
+))
+```
+
+Run the competition:
+```bash
+python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
+```
+
+## Step 7: Iterate
+
+- If your strategy beats the current leader → try to improve it further
+- If it doesn't → create a new one. Try different indicators, parameter combinations, or a different approach entirely
+- Try wrapping with cash-out: `with_cash_out(MyStrategy(), take_profit_pct=0.20, stop_loss_pct=-0.25)`
+- Try different categories — your strategy might dominate in crypto but not soccer
+- Stop when no improvement has been made for 3 consecutive rounds
+
+## Step 8: Deliver
+
+Print the final results:
+- The winning strategy code
+- Its return and Sharpe vs every competitor
+- The key insight that made it work
+
+---
+
+## Reference: Available tools
 
 Your strategy inherits from `CashOutStrategy` (in `strategies/base.py`), which provides:
 
@@ -29,7 +143,7 @@ Your strategy inherits from `CashOutStrategy` (in `strategies/base.py`), which p
 - `self.n_bars` — number of bars received so far
 - `self.bars_df` — all bars as a pandas DataFrame
 
-**Indicators** (computed on accumulated data, PIT-safe — no future data):
+**Indicators** (PIT-safe — no future data):
 - `self.sma(n)` — simple moving average
 - `self.ema(n)` — exponential moving average
 - `self.rsi(n=14)` — relative strength index (0–100)
@@ -41,25 +155,31 @@ Your strategy inherits from `CashOutStrategy` (in `strategies/base.py`), which p
 - `self.price_change(n=1)` — price change over n bars
 - `self.rolling_max(n)`, `self.rolling_min(n)`, `self.rolling_std(n)`
 
-You can also use numpy and pandas directly:
+Use numpy and pandas directly:
 ```python
 import numpy as np
-# self.closes is already a numpy array, so:
-returns = np.diff(self.closes) / self.closes[:-1]  # pct returns
+returns = np.diff(self.closes) / self.closes[:-1]
 volatility = np.std(returns[-20:])
 ```
 
-## ⚠️ Constraint: do NOT use the question text directly
+## Reference: Cash-out
 
-Your strategy receives `self.question` and `self.tag`. You **cannot** use the question text to make trading decisions based on your knowledge of the event outcome. This is backtesting past events — your training data may contain the answer, so using the question directly would be cheating.
+Most strategies lose because they hold too long. Wrap any strategy with take-profit/stop-loss:
+```python
+from strategies.base import with_cash_out
+wrapped = with_cash_out(MyStrategy(), take_profit_pct=0.20, stop_loss_pct=-0.25)
+```
+
+## Reference: Question constraint
+
+You **cannot** use the question text to make trading decisions based on your knowledge of the event outcome. This is backtesting past events — your training data may contain the answer, so using the question directly would be cheating.
 
 Rules:
 - You may look at ≤5 questions total (print them if debugging)
 - Any question processing in code must use **simple regex only** (`re.search`, `re.match`, `re.findall`)
-- No LLM calls, no lookups, no accessing external knowledge about the event
 - Allowed: `re.search(r"temperature|high|low", self.question, re.I)` — detects category
 - Forbidden: using the question to recall who actually won
 
-## Where to write strategies
+## Reference: How Polymarket works
 
-Write your strategies in `strategies/originals/` or `strategies/hybrids/`. Subclass `CashOutStrategy` from `strategies/base.py` and implement `_on_bar(self, bar, portfolio) -> list[Order]`.
+You buy shares — Yes or No. Markets resolve to Yes or No. If you bet right, you get $1/share. If wrong, you lose everything. The key difference from binary options: you can cash out at any time before resolution. Prices move based on probability — buy cheap when uncertain, sell expensive when confident, or hold to resolution.

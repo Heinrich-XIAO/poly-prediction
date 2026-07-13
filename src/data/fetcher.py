@@ -69,6 +69,12 @@ async def fetch_markets(
             if not isinstance(data, list) or not data:
                 break
             page = [_parse_gamma_market(m) for m in data if _is_clob_market(m)]
+            # Gamma API doesn't return tags in the response — inject the
+            # tag_slug used for filtering so list_markets(tag=...) works.
+            if tag:
+                for m in page:
+                    if tag not in m.tags:
+                        m.tags = [*m.tags, tag]
             markets.extend(page)
             if len(data) < limit:
                 break

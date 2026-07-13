@@ -197,3 +197,7 @@ Rules:
 ## Reference: How Polymarket works
 
 You buy shares — Yes or No. Markets resolve to Yes or No. If you bet right, you get $1/share. If wrong, you lose everything. The key difference from binary options: you can cash out at any time before resolution. Prices move based on probability — buy cheap when uncertain, sell expensive when confident, or hold to resolution.
+
+
+
+NEVER COMMIT UNTIL YOU'VE ASKED THE USER WHETHER YOU SHOULD COMMIT.

@@ -50,14 +50,18 @@ Record which tags succeeded — you'll use them later.
 
 ## Step 3: Run the baseline competition
 
+The competition tests every strategy on **every market** in the category with enough trade data. A strategy that only wins on one market will not rank well — it must perform consistently across many markets.
+
 Run the competition on the tag with data:
 ```bash
-python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 20
 ```
 
 Replace `soccer` with whichever tag succeeded. Record:
-- The current leader's name, return %, and Sharpe ratio
-- This is the score you must beat
+- The current leader's Total Return, Win Rate, and Avg Sharpe across all markets
+- This aggregate score is what you must beat
+
+Flags: `--min-bars` (default 20) filters out markets with too few bars. `--max-markets` (default 50) limits how many markets to test on.
 
 ## Step 4: Get inspired
 
@@ -72,6 +76,8 @@ You can also analyze which categories your competitors are weak in — try diffe
 
 ## Step 5: Create a strategy
 
+Your strategy will be tested on **every market** in the category, not a single cherry-picked one. It can choose to skip a market entirely (return no orders). Use `self.question` and `self.tag` to decide.
+
 Write a new file in `strategies/originals/` or `strategies/hybrids/`. Your strategy must:
 
 1. Subclass `CashOutStrategy` from `strategies/base.py`
@@ -84,13 +90,18 @@ from strategies.base import CashOutStrategy
 from src.strategy.base import Bar, Order, PortfolioView, Side
 from typing import Iterable
 import numpy as np
+import re
 
 class MyStrategy(CashOutStrategy):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        # self.question and self.tag are set per-market
 
     def _on_bar(self, bar: Bar, portfolio: PortfolioView) -> Iterable[Order]:
         if self.n_bars < 20:
+            return []
+        # Example: skip markets that don't fit your niche
+        if not re.search(r"win|defeat|beat", self.question, re.I):
             return []
         if bar.close < self.sma(20) * 0.95:
             return [Order(token_id=bar.token_id, side=Side.BUY,
@@ -111,17 +122,20 @@ register(StrategyRecord(
 ))
 ```
 
-Run the competition:
+Run the competition (tests every strategy on **all markets** in the tag):
 ```bash
-python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 20
 ```
 
 ## Step 7: Iterate
 
-- If your strategy beats the current leader → try to improve it further
+Judging is based on the **aggregate leaderboard** — Total Return across all markets, Win Rate, and Avg Sharpe. A strategy that wins big on one market but loses on five others will rank below one that makes small steady profits on every market.
+
+- If your strategy's aggregate Total Return beats the current leader → try to improve it further
 - If it doesn't → create a new one. Try different indicators, parameter combinations, or a different approach entirely
 - Try wrapping with cash-out: `with_cash_out(MyStrategy(), take_profit_pct=0.20, stop_loss_pct=-0.25)`
 - Try different categories — your strategy might dominate in crypto but not soccer
+- Use `--max-markets 50` for a broad test or `--max-markets 5` for a quick sanity check
 - Stop when no improvement has been made for 3 consecutive rounds
 
 ## Step 8: Deliver

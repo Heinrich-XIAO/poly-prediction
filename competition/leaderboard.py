@@ -31,6 +31,22 @@ class Leaderboard:
         """)
         self._conn.commit()
 
+    def record_aggregate(self, metrics: dict, strategy_name: str, category: str | None = None) -> None:
+        with self._conn:
+            self._conn.execute("""
+                INSERT INTO leaderboard
+                    (run_id, strategy, category, token_id, initial_cash, final_equity,
+                     total_return, sharpe, max_drawdown, n_trades, fees_paid, params_json, created_at)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """, (
+                f"agg_{strategy_name}", strategy_name, category, "__all__",
+                0.0, 0.0,
+                metrics["total_return"], metrics["avg_sharpe"], metrics["avg_max_drawdown"],
+                metrics["total_trades"], metrics["total_fees"],
+                "{}",
+                dt.datetime.now(dt.timezone.utc).isoformat(),
+            ))
+
     def record(self, run, metrics: dict, strategy_name: str, category: str | None = None) -> None:
         from src.constants import DEFAULT_CACHE_DB
         with self._conn:

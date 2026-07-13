@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Run all registered strategies on a market and compare results.
+"""Run all registered strategies on every market in a category and compare results.
 
 Usage:
     python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
 
+Strategies are tested on *every* market with sufficient trade data.
+A strategy that cherry-picks a single market will not rank well.
 Requires cached data (run `python -m src.cli.main fetch --with-trades --tag soccer` first).
 """
 
@@ -17,7 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from competition.registry import register, StrategyRecord, list_strategies
-from competition.runner import CompetitionRunner
+from competition.runner import CompetitionRunner, MarketDef
 from competition.report import print_comparison_report
 from competition.leaderboard import Leaderboard
 from src.data.store import Store
@@ -42,12 +44,18 @@ def _register_builtins():
     ))
 
 
+_MIN_BARS = 20
+_MAX_MARKETS = 50
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Run strategy competition")
+    parser = argparse.ArgumentParser(description="Run strategy competition across all markets in a tag")
     parser.add_argument("--tag", default="soccer", help="Market category tag")
     parser.add_argument("--freq", default="5min", help="Bar frequency")
-    parser.add_argument("--cash", type=float, default=1000.0, help="Initial cash")
+    parser.add_argument("--cash", type=float, default=1000.0, help="Initial cash per market")
     parser.add_argument("--db", default="data/cache.db", help="SQLite cache path")
+    parser.add_argument("--min-bars", type=int, default=_MIN_BARS, help="Minimum bars to include a market")
+    parser.add_argument("--max-markets", type=int, default=_MAX_MARKETS, help="Max markets to test on")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -61,32 +69,37 @@ def main():
             print(f"No cached markets for tag '{args.tag}'. Run fetch first.")
             sys.exit(1)
 
-        target = next((m for m in markets if m.token_ids), None)
-        if not target:
-            print("No tradable market found.")
+        market_defs: list[MarketDef] = []
+        for m in markets:
+            if len(market_defs) >= args.max_markets:
+                break
+            if not m.token_ids:
+                continue
+            tid = m.token_ids[0]
+            bars = build_ohlc(store, tid, freq=args.freq)
+            if len(bars) < args.min_bars:
+                continue
+            market_defs.append(MarketDef(
+                bars=bars, token_id=tid,
+                question=m.question, tag=args.tag,
+            ))
+
+        if not market_defs:
+            print(f"No markets with >= {args.min_bars} bars of trade data for tag '{args.tag}'.")
             sys.exit(1)
 
-        token_id = target.token_ids[0]
-        print(f"Market: {target.question[:80]}")
-        print(f"Token:  {token_id[:16]}…")
-
-        bars = build_ohlc(store, token_id, freq=args.freq)
-        if bars.empty:
-            print(f"No trades cached for token {token_id[:16]}…")
-            sys.exit(1)
-
-        print(f"Bars:   {len(bars)} ({args.freq})")
+        print(f"Testing {len(market_defs)} markets ({args.min_bars}+ bars each)")
+        print(f"Strategies: {len(list_strategies())}")
         print()
 
-        runner = CompetitionRunner(bars, token_id, initial_cash=args.cash,
-                                   question=target.question, tag=args.tag)
+        runner = CompetitionRunner(market_defs, initial_cash=args.cash)
         result = runner.run(list_strategies())
 
         print_comparison_report(result)
 
         lb = Leaderboard("data/leaderboard.db")
-        for name in result.runs:
-            lb.record(result.runs[name], result.metrics[name], name, category=args.tag)
+        for name, metrics in result.aggregate_metrics.items():
+            lb.record_aggregate(metrics, name, category=args.tag)
         lb.close()
 
 

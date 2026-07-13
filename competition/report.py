@@ -9,31 +9,65 @@ from competition.runner import ComparisonResult
 def print_comparison_report(result: ComparisonResult, console: Console | None = None) -> None:
     console = console or Console()
     console.rule("[bold cyan]Competition Results[/bold cyan]")
-    console.print(f"token: {result.token_id[:16]}…  bars: {len(result.bars)}  cash: ${result.initial_cash:.0f}")
+    console.print(f"Markets: {len(result.markets)}  Cash/ market: ${result.initial_cash:.0f}")
     console.print()
 
-    tbl = Table(title="Strategy Leaderboard", header_style="bold")
+    # Aggregate leaderboard
+    tbl = Table(title="Aggregate Leaderboard (all markets)", header_style="bold")
     tbl.add_column("Rank", justify="right", style="dim")
     tbl.add_column("Strategy")
-    tbl.add_column("Return", justify="right")
-    tbl.add_column("Sharpe", justify="right")
-    tbl.add_column("Max DD", justify="right")
+    tbl.add_column("Total Return", justify="right")
+    tbl.add_column("Avg Return", justify="right")
+    tbl.add_column("Win Rate", justify="right")
+    tbl.add_column("Avg Sharpe", justify="right")
+    tbl.add_column("Avg Max DD", justify="right")
     tbl.add_column("Trades", justify="right")
     tbl.add_column("Fees", justify="right")
 
-    for rank, (name, ret) in enumerate(result.rankings, 1):
-        m = result.metrics[name]
-        ret_color = "green" if ret >= 0 else "red"
+    for rank, (name, _) in enumerate(result.rankings, 1):
+        m = result.aggregate_metrics[name]
+        color = "green" if m["total_return"] >= 0 else "red"
         tbl.add_row(
             str(rank),
             name,
-            f"[{ret_color}]{ret * 100:+.2f}%[/]",
-            f"{m['sharpe']:.2f}",
-            f"{m['max_drawdown'] * 100:.1f}%",
-            str(m["n_trades"]),
-            f"${m['fees_paid']:.2f}",
+            f"[{color}]{m['total_return'] * 100:+.2f}%[/]",
+            f"{m['avg_return'] * 100:+.2f}%",
+            f"{m['win_rate'] * 100:.0f}%",
+            f"{m['avg_sharpe']:.2f}",
+            f"{m['avg_max_drawdown'] * 100:.1f}%",
+            str(m["total_trades"]),
+            f"${m['total_fees']:.2f}",
         )
     console.print(tbl)
+    console.print()
+
+    # Per-market detail
+    console.rule("[dim]Per-Market Detail[/dim]")
+    for mres in result.markets:
+        console.print(f"\n[bold]{mres.question[:60]}[/bold]  ({mres.n_bars} bars)")
+        sub = Table(header_style="dim")
+        sub.add_column("Strategy")
+        sub.add_column("Return", justify="right")
+        sub.add_column("Sharpe", justify="right")
+        sub.add_column("Max DD", justify="right")
+        sub.add_column("Trades", justify="right")
+        sub.add_column("Fees", justify="right")
+
+        for name, _ in result.rankings:
+            if name not in mres.metrics:
+                sub.add_row(name, "[dim]skipped[/dim]", "", "", "", "")
+                continue
+            met = mres.metrics[name]
+            sc = "green" if met["total_return"] >= 0 else "red"
+            sub.add_row(
+                name,
+                f"[{sc}]{met['total_return'] * 100:+.2f}%[/]",
+                f"{met['sharpe']:.2f}",
+                f"{met['max_drawdown'] * 100:.1f}%",
+                str(met["n_trades"]),
+                f"${met['fees_paid']:.2f}",
+            )
+        console.print(sub)
 
 
 def print_leaderboard(rows: list[dict], console: Console | None = None) -> None:

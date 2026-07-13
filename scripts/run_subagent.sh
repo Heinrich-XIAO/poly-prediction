@@ -14,4 +14,4 @@ opencode run \
   --file PROMPT.md \
   --title "Polymarket strategy agent" \
   --dangerously-skip-permissions \
-  "Read the attached PROMPT.md and follow every step to create a profitable Polymarket strategy. Start with Step 1 and proceed sequentially. Do not stop until you complete all steps."
+  "Read the PROMPT.md and follow every step to create a profitable Polymarket strategy. Start with Step 1 and proceed sequentially. Do not stop until you complete all steps."

@@ -63,6 +63,8 @@ Replace `soccer` with whichever tag succeeded. Record:
 
 Flags: `--min-bars` (default 20) filters out markets with too few bars. `--max-markets` (default 50) limits how many markets to test on.
 
+Read the previous agent's summaries of their strategies in the agent_summaries directory. If it is empty, you're the first one. If it's not empty, make sure to stay away from things that are too similar to avoid directly competing.
+
 ## Step 4: Get inspired
 
 Fetch 5 random words:

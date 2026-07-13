@@ -19,4 +19,47 @@ CASHING OUT IS IMPORTANT. It is often that people predict then hold. That's usua
 
 How polymarket works: First, you can buy shares. You can buy Yes, and you can buy No. In the end, all markets resolve to either Yes or No. If you bet on the wrong one, you lose all of your investment. If you bet on the right one, you get $1 per share, so you gain the differce between $1 and the initial price of one share. The big difference between this and a binary option, is that you CAN cash out in the middle.
 
+## Available tools
+
+Your strategy inherits from `CashOutStrategy` (in `strategies/base.py`), which provides:
+
+**Bar history** (accumulated automatically each bar):
+- `self.closes` — numpy array of all closing prices so far
+- `self.volumes`, `self.highs`, `self.lows`, `self.opens`, `self.vwaps` — same
+- `self.n_bars` — number of bars received so far
+- `self.bars_df` — all bars as a pandas DataFrame
+
+**Indicators** (computed on accumulated data, PIT-safe — no future data):
+- `self.sma(n)` — simple moving average
+- `self.ema(n)` — exponential moving average
+- `self.rsi(n=14)` — relative strength index (0–100)
+- `self.bollinger_bands(n=20, k=2)` — returns `(upper, mid, lower)`
+- `self.atr(n=14)` — average true range
+- `self.macd(fast=12, slow=26, signal=9)` — returns `(macd_line, signal_line, histogram)`
+- `self.stochastic(n=14, k_smooth=3)` — returns `(%K, %D)`
+- `self.volume_ratio(n=20)` — current volume / average volume
+- `self.price_change(n=1)` — price change over n bars
+- `self.rolling_max(n)`, `self.rolling_min(n)`, `self.rolling_std(n)`
+
+You can also use numpy and pandas directly:
+```python
+import numpy as np
+# self.closes is already a numpy array, so:
+returns = np.diff(self.closes) / self.closes[:-1]  # pct returns
+volatility = np.std(returns[-20:])
+```
+
+## ⚠️ Constraint: do NOT use the question text directly
+
+Your strategy receives `self.question` and `self.tag`. You **cannot** use the question text to make trading decisions based on your knowledge of the event outcome. This is backtesting past events — your training data may contain the answer, so using the question directly would be cheating.
+
+Rules:
+- You may look at ≤5 questions total (print them if debugging)
+- Any question processing in code must use **simple regex only** (`re.search`, `re.match`, `re.findall`)
+- No LLM calls, no lookups, no accessing external knowledge about the event
+- Allowed: `re.search(r"temperature|high|low", self.question, re.I)` — detects category
+- Forbidden: using the question to recall who actually won
+
+## Where to write strategies
+
 Write your strategies in `strategies/originals/` or `strategies/hybrids/`. Subclass `CashOutStrategy` from `strategies/base.py` and implement `_on_bar(self, bar, portfolio) -> list[Order]`.

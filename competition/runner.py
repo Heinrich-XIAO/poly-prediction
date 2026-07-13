@@ -32,12 +32,16 @@ class CompetitionRunner:
         initial_cash: float = 1000.0,
         fee_rate: float = 0.02,
         slippage: str = "bar_vwap",
+        question: str = "",
+        tag: str = "",
     ):
         self.bars = bars
         self.token_id = token_id
         self.initial_cash = initial_cash
         self.fee_rate = fee_rate
         self.slippage = slippage
+        self.question = question
+        self.tag = tag
 
     def run(self, records: list[StrategyRecord]) -> ComparisonResult:
         from src.analytics.metrics import compute_all
@@ -50,7 +54,7 @@ class CompetitionRunner:
 
         for rec in records:
             try:
-                strategy: Strategy = rec.strategy_class(**rec.default_params)
+                strategy: Strategy = rec.strategy_class(**rec.default_params, question=self.question, tag=self.tag)
                 engine = Engine(
                     strategy,
                     self.bars,

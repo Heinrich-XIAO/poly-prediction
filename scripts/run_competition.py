@@ -78,7 +78,8 @@ def main():
         print(f"Bars:   {len(bars)} ({args.freq})")
         print()
 
-        runner = CompetitionRunner(bars, token_id, initial_cash=args.cash)
+        runner = CompetitionRunner(bars, token_id, initial_cash=args.cash,
+                                   question=target.question, tag=args.tag)
         result = runner.run(list_strategies())
 
         print_comparison_report(result)

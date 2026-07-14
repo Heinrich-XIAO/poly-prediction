@@ -39,7 +39,36 @@ function cryptoUrl(time: number): string {
   return `https://polymarket.com/api/crypto/price-history?symbol=BTC&eventStartTime=${encodeURIComponent(start)}&variant=hourly&endDate=${encodeURIComponent(end)}`;
 }
 
+const tradeSem = new (class {
+  max = 4; pending = 0; queue: Array<() => void> = [];
+  async acquire() {
+    if (this.pending < this.max) { this.pending++; return; }
+    await new Promise<void>((r) => this.queue.push(r));
+    this.pending++;
+  }
+  release() {
+    this.pending--;
+    const next = this.queue.shift();
+    if (next) { this.pending++; next(); }
+  }
+})();
+
 async function fetchAllTrades(conditionId: string, signal: AbortSignal): Promise<any[]> {
+  await tradeSem.acquire();
+  try {
+    const result = await Promise.race([
+      fetchTradesPages(conditionId, signal),
+      new Promise<any[]>((_, reject) =>
+        setTimeout(() => reject(new Error("trade sem timeout")), 50000)
+      ),
+    ]);
+    return result;
+  } finally {
+    tradeSem.release();
+  }
+}
+
+async function fetchTradesPages(conditionId: string, signal: AbortSignal): Promise<any[]> {
   const allTrades: any[] = [];
   const paginator = await client.listTrades({ market: [conditionId], pageSize: 100 });
   let pages = 0;

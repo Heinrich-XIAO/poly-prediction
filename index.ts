@@ -1,4 +1,4 @@
-import { createPublicClient, PriceHistoryInterval } from "@polymarket/client";
+import { createPublicClient } from "@polymarket/client";
 
 const client = createPublicClient();
 
@@ -59,17 +59,31 @@ const checkNextSlug = async () => {
       const crypto_price_history = await (await fetch(`https://polymarket.com/api/crypto/price-history?symbol=BTC&eventStartTime=${encodeURIComponent(new Date(time*1000).toISOString().replace('.000', ''))}&variant=hourly&endDate=${encodeURIComponent(new Date(new Date(time*1000).getTime() + 60 * 60 * 1000).toISOString().replace(".000", ""))}`)).json();
       console.log(crypto_price_history);
 
-      console.log(res.outcomes.yes.tokenId);
-      const yes_history = await client.fetchPriceHistory({
-        tokenId: res.outcomes.yes.tokenId,
-        interval: PriceHistoryInterval.ONE_HOUR,
-      });
-      console.log(yes_history);
-      const no_history = await client.fetchPriceHistory({
-        tokenId: res.outcomes.no.tokenId,
-        interval: PriceHistoryInterval.MAX,
-      });
-      console.log(no_history);
+      if (!res.conditionId) {
+        console.error(`No condition ID found for market with slug: ${slug}`);
+        return false;
+      }
+      const conditionId: string = res.conditionId;
+      const yesTokenId = res.outcomes.yes.tokenId;
+      const noTokenId = res.outcomes.no.tokenId;
+
+      const allTrades = [];
+      const paginator = await client.listTrades({ market: [conditionId], pageSize: 100 });
+      for await (const page of paginator) {
+        allTrades.push(...page.items);
+      }
+
+      const yes_trades = allTrades
+        .filter(t => t.tokenId === yesTokenId && t.timestamp != null)
+        .sort((a, b) => a.timestamp! - b.timestamp!);
+      const no_trades = allTrades
+        .filter(t => t.tokenId === noTokenId && t.timestamp != null)
+        .sort((a, b) => a.timestamp! - b.timestamp!);
+
+      console.log("yes tokenId:", yesTokenId);
+      console.log("yes trades:", yes_trades);
+      console.log("no tokenId:", noTokenId);
+      console.log("no trades:", no_trades);
     } catch (error) {
       console.error(`Error fetching market history for slug: ${slug}`, error);
       return false;

@@ -28,25 +28,16 @@ python -c "from strategies.base import CashOutStrategy; print('OK')"
 
 ## Step 2: Fetch market data
 
-Fetch at least one tag. Pick the first tag that succeeds:
+Fetch every tag. Pick a random one:
 ```bash
 python -m src.cli.main fetch --tag soccer --with-trades --since 2026-06-01
-```
-
-If that fails or returns nothing, try the next:
-```bash
 python -m src.cli.main fetch --tag crypto --with-trades --since 2026-06-01
 python -m src.cli.main fetch --tag politics --with-trades --since 2026-06-01
 python -m src.cli.main fetch --tag weather --with-trades --since 2026-06-01
 python -m src.cli.main fetch --tag nba --with-trades --since 2026-06-01
 ```
 
-Stop when at least one tag has cached data (verify with `list` command):
-```bash
-python -m src.cli.main list --tag soccer --limit 5
-```
-
-Record which tags succeeded — you'll use them later.
+Record which tag you chose — you'll use them later.
 
 ## Step 3: Run the baseline competition
 

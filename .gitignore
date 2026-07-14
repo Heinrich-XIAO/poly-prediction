@@ -27,9 +27,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .cache
 *.tsbuildinfo
 
-# data
-data/
-
 # IntelliJ based IDEs
 .idea
 

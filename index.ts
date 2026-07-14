@@ -1,98 +1,211 @@
 import { createPublicClient } from "@polymarket/client";
+import { mkdirSync } from "fs";
 
 const client = createPublicClient();
+const et = new Intl.DateTimeFormat("en-US", {
+  timeZone: "America/New_York",
+  month: "long",
+  day: "numeric",
+  hour: "numeric",
+  hour12: true,
+});
 
-const firstSlug = "bitcoin-up-or-down-june-19-12am-et";
+const firstSlugDate = new Date("2025-06-19T04:00:00Z"); // June 19, 2025 12am ET
 
-function createSlugGenerator(start: Date) {
-  let current = new Date(start);
-  let hasReachedFirstSlug = false;
-
-  return () => {
-    const months = [
-      "january", "february", "march", "april", "may", "june",
-      "july", "august", "september", "october", "november", "december"
-    ];
-
-    const month = months[current.getUTCMonth()];
-    const day = current.getUTCDate();
-
-    let hour = current.getUTCHours();
-    const ampm = hour >= 12 ? "pm" : "am";
-    hour = hour % 12;
-    if (hour === 0) hour = 12;
-
-    const slugWithoutYear = `bitcoin-up-or-down-${month}-${day}-${hour}${ampm}-et`;
-
-    if (slugWithoutYear === firstSlug) {
-      hasReachedFirstSlug = true;
-    }
-
-    const slug = hasReachedFirstSlug
-      ? `bitcoin-up-or-down-${month}-${day}-${hour}${ampm}-${current.getUTCFullYear()}-et`
-      : slugWithoutYear;
-
-    // Move back one hour for the next call
-    current.setUTCHours(current.getUTCHours() - 1);
-
-    return {
-      slug,
-      time: current.getTime()/1000
-    };
-  };
+function slugFromDate(d: Date): string {
+  const parts = et.formatToParts(d);
+  const month = parts.find((p) => p.type === "month")!.value.toLowerCase();
+  const day = parts.find((p) => p.type === "day")!.value;
+  const hour = parts.find((p) => p.type === "hour")!.value;
+  const ampm = parts.find((p) => p.type === "dayPeriod")!.value.toLowerCase();
+  return `bitcoin-up-or-down-${month}-${day}-${hour}${ampm}-et`;
 }
 
-const nextSlug = createSlugGenerator(new Date("2026-07-13T23:00:00-04:00"));
+function generateSlugs(start: Date): { slug: string; time: number }[] {
+  const results: { slug: string; time: number }[] = [];
+  let current = new Date(start);
 
-const checkNextSlug = async () => {
-  const {slug, time} = nextSlug();
-  try {
-    const res = await client.fetchMarket({
-      slug
-    });
-    console.log(res);
-    try {
-      if (!res.outcomes || !res.outcomes.yes || !res.outcomes.no || !res.outcomes.yes.tokenId || !res.outcomes.no.tokenId) {
-        console.error(`No 'yes' or 'no' outcome found for market with slug: ${slug}`);
-        return false;
-      }
-      const crypto_price_history = await (await fetch(`https://polymarket.com/api/crypto/price-history?symbol=BTC&eventStartTime=${encodeURIComponent(new Date(time*1000).toISOString().replace('.000', ''))}&variant=hourly&endDate=${encodeURIComponent(new Date(new Date(time*1000).getTime() + 60 * 60 * 1000).toISOString().replace(".000", ""))}`)).json();
-      console.log(crypto_price_history);
-
-      if (!res.conditionId) {
-        console.error(`No condition ID found for market with slug: ${slug}`);
-        return false;
-      }
-      const conditionId: string = res.conditionId;
-      const yesTokenId = res.outcomes.yes.tokenId;
-      const noTokenId = res.outcomes.no.tokenId;
-
-      const allTrades = [];
-      const paginator = await client.listTrades({ market: [conditionId], pageSize: 100 });
-      for await (const page of paginator) {
-        allTrades.push(...page.items);
-      }
-
-      const yes_trades = allTrades
-        .filter(t => t.tokenId === yesTokenId && t.timestamp != null)
-        .sort((a, b) => a.timestamp! - b.timestamp!);
-      const no_trades = allTrades
-        .filter(t => t.tokenId === noTokenId && t.timestamp != null)
-        .sort((a, b) => a.timestamp! - b.timestamp!);
-
-      console.log("yes tokenId:", yesTokenId);
-      console.log("yes trades:", yes_trades);
-      console.log("no tokenId:", noTokenId);
-      console.log("no trades:", no_trades);
-    } catch (error) {
-      console.error(`Error fetching market history for slug: ${slug}`, error);
-      return false;
-    }
-  } catch (error) {
-    console.error(`Error fetching market for slug: ${slug}`, error);
-    return false;
+  while (current >= firstSlugDate) {
+    results.push({ slug: slugFromDate(current), time: current.getTime() / 1000 });
+    current.setUTCHours(current.getUTCHours() - 1);
   }
-  return true;
-};
-// while (await checkNextSlug()) {}
-await checkNextSlug();
+
+  return results;
+}
+
+function cryptoUrl(time: number): string {
+  const start = new Date(time * 1000).toISOString().replace(".000", "");
+  const end = new Date(time * 1000 + 3600 * 1000).toISOString().replace(".000", "");
+  return `https://polymarket.com/api/crypto/price-history?symbol=BTC&eventStartTime=${encodeURIComponent(start)}&variant=hourly&endDate=${encodeURIComponent(end)}`;
+}
+
+async function fetchAllTrades(conditionId: string, signal: AbortSignal): Promise<any[]> {
+  const allTrades: any[] = [];
+  const paginator = await client.listTrades({ market: [conditionId], pageSize: 100 });
+  let pages = 0;
+  for await (const page of paginator) {
+    allTrades.push(...page.items);
+    if (signal.aborted || ++pages >= 10) break;
+  }
+  return allTrades;
+}
+
+async function downloadOne(slug: string, time: number): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 30000);
+  const signal = controller.signal;
+
+  try {
+    const [market, crypto_price_history] = await Promise.all([
+      client.fetchMarket({ slug }),
+      fetch(cryptoUrl(time), { signal }).then((r) => r.json()),
+    ]);
+
+    if (
+      !market.conditionId ||
+      !market.outcomes?.yes?.tokenId ||
+      !market.outcomes?.no?.tokenId
+    ) {
+      return null;
+    }
+
+    const conditionId: string = market.conditionId;
+    const yesTokenId = market.outcomes.yes.tokenId;
+    const noTokenId = market.outcomes.no.tokenId;
+
+    let yes_trades: any[] = [];
+    let no_trades: any[] = [];
+    try {
+      const allTrades = await fetchAllTrades(conditionId, signal);
+      yes_trades = allTrades
+        .filter((t: any) => t.tokenId === yesTokenId && t.timestamp != null)
+        .sort((a: any, b: any) => a.timestamp - b.timestamp);
+      no_trades = allTrades
+        .filter((t: any) => t.tokenId === noTokenId && t.timestamp != null)
+        .sort((a: any, b: any) => a.timestamp - b.timestamp);
+    } catch (e) {
+      process.stderr.write(`\x1b[33m⚠\x1b[0m trades failed for ${slug}: ${(e as any)?.message ?? e}\n`);
+    }
+
+    return { slug, time, market, crypto_price_history, yes_trades, no_trades };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function downloadWithRetry(slug: string, time: number, retries = 3): Promise<any> {
+  for (let i = 0; i < retries; i++) {
+    try {
+      const result = await Promise.race([
+        downloadOne(slug, time),
+        new Promise<any>((_, reject) =>
+          setTimeout(() => reject(new Error("timeout")), 120000)
+        ),
+      ]);
+      return result;
+    } catch (e) {
+      if (i === retries - 1) throw e;
+      await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+}
+
+const BAR_WIDTH = 50;
+
+function pacmanBar(current: number, total: number, label: string) {
+  const pct = total > 0 ? Math.round((current / total) * 100) : 0;
+  const filled = total > 0 ? Math.round((current / total) * BAR_WIDTH) : 0;
+
+  let bar = "";
+  for (let i = 0; i < BAR_WIDTH; i++) {
+    if (i < filled) {
+      const pos = i / BAR_WIDTH;
+      if (pos < 0.33) bar += "\x1b[32m#\x1b[0m";
+      else if (pos < 0.66) bar += "\x1b[33m#\x1b[0m";
+      else bar += "\x1b[31m#\x1b[0m";
+    } else {
+      bar += "\x1b[2m.\x1b[0m";
+    }
+  }
+
+  const slug = label.length > 55 ? label.slice(0, 52) + "..." : label;
+  process.stderr.write(
+    `\r\x1b[K[\x1b[36m>\x1b[0m] ${bar} ${String(pct).padStart(3)}%  (${current}/${total}) ${slug}`
+  );
+}
+
+async function main() {
+  const startTime = new Date();
+  // Round down to current hour in ET
+  startTime.setMinutes(0, 0, 0);
+  const slugs = generateSlugs(startTime);
+  const total = slugs.length;
+
+  try {
+    mkdirSync("data", { recursive: true });
+  } catch {}
+
+  const concurrency = 50;
+  let done = 0;
+  let noData = 0;
+  let errorSlugs: string[] = [];
+
+  process.stderr.write(`\x1b[36m::\x1b[0m Snapshotting ${total} BTC hourly markets\n`);
+
+  for (let i = 0; i < slugs.length; i += concurrency) {
+    const batch = slugs.slice(i, i + concurrency);
+
+    const results = await Promise.allSettled(
+      batch.map(async ({ slug, time }) => {
+        const data = await downloadWithRetry(slug, time);
+        if (data) {
+          await Bun.write(`data/${slug}.json`, JSON.stringify(data, null, 2));
+        }
+        return { slug: slug, ok: data !== null };
+      })
+    );
+
+    for (let j = 0; j < results.length; j++) {
+      const r = results[j]!;
+      if (r.status === "fulfilled") {
+        done++;
+        if (!r.value.ok) noData++;
+        pacmanBar(done, total, r.value.slug);
+      } else {
+        done++;
+        errorSlugs.push(batch[j]!.slug);
+      }
+    }
+  }
+
+  // Retry errored slugs
+  let retried = 0;
+  for (const slug of errorSlugs) {
+    if (slug === "unknown") { noData++; continue; }
+    const entry = slugs.find((s) => s.slug === slug);
+    if (!entry) { noData++; continue; }
+    try {
+      const data = await downloadWithRetry(entry.slug, entry.time, 5);
+      if (data) {
+        await Bun.write(`data/${entry.slug}.json`, JSON.stringify(data, null, 2));
+        retried++;
+        pacmanBar(done, total, entry.slug);
+      } else {
+        noData++;
+      }
+    } catch {
+      noData++;
+    }
+  }
+
+  process.stderr.write("\n");
+  if (retried > 0) {
+    process.stderr.write(`\x1b[33m::\x1b[0m ${retried} recovered on retry\n`);
+  }
+  if (noData > 0) {
+    process.stderr.write(`\x1b[33m::\x1b[0m ${noData} markets had no data\n`);
+  }
+  process.stderr.write(`\x1b[32m::\x1b[0m Done — ${done - noData} markets saved to data/\n`);
+}
+
+await main();

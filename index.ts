@@ -6,6 +6,7 @@ const firstSlug = "bitcoin-up-or-down-june-19-12am-et";
 
 function createSlugGenerator(start: Date) {
   let current = new Date(start);
+  let hasReachedFirstSlug = false;
 
   return () => {
     const months = [
@@ -21,7 +22,15 @@ function createSlugGenerator(start: Date) {
     hour = hour % 12;
     if (hour === 0) hour = 12;
 
-    const slug = `bitcoin-up-or-down-${month}-${day}-${hour}${ampm}-et`;
+    const slugWithoutYear = `bitcoin-up-or-down-${month}-${day}-${hour}${ampm}-et`;
+
+    if (slugWithoutYear === firstSlug) {
+      hasReachedFirstSlug = true;
+    }
+
+    const slug = hasReachedFirstSlug
+      ? `bitcoin-up-or-down-${month}-${day}-${hour}${ampm}-${current.getUTCFullYear()}-et`
+      : slugWithoutYear;
 
     // Move back one hour for the next call
     current.setUTCHours(current.getUTCHours() - 1);

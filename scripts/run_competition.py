@@ -1,11 +1,17 @@
 #!/usr/bin/env python3
-"""Run all registered strategies on every market in a category and compare results.
+"""Run all registered strategies on markets in a category and compare results.
 
-Usage:
-    python scripts/run_competition.py --tag soccer --freq 5min --cash 1000
+Usage (development):
+    python scripts/run_competition.py --tag soccer --freq 5min --cash 1000 --max-markets 50
 
-Strategies are tested on *every* market with sufficient trade data.
-A strategy that cherry-picks a single market will not rank well.
+Usage (final eval):
+    python scripts/run_competition.py --tag soccer --freq 5min --cash 1000 --max-markets 50 --eval
+
+Markets are split into training (development) and test (final evaluation) sets
+when --holdout-fraction > 0. The split is deterministic — same DB state, same
+split every time. Never use --eval during iteration; that leaks test-set signal
+and invalidates your result.
+
 Requires cached data (run `python -m src.cli.main fetch --with-trades --tag soccer` first).
 """
 
@@ -13,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 import sys
 from pathlib import Path
 
@@ -80,18 +87,59 @@ def _register_builtins():
 
 _MIN_BARS = 20
 _MAX_MARKETS = 50
+_HOLDOUT_SEED = 42
+
+
+def _holdout_split(
+    market_defs: list[MarketDef], fraction: float
+) -> tuple[list[MarketDef], list[MarketDef]]:
+    """Split markets into train/test sets.
+
+    Deterministic for the same list (seed is fixed) — adding or removing a
+    market may shift the boundary slightly, but re-running on identical data
+    produces identical splits.
+    """
+    if fraction <= 0 or len(market_defs) < 2:
+        return market_defs, []
+
+    n = len(market_defs)
+    n_test = max(3, int(n * fraction))
+    n_test = min(n_test, n - 1)  # leave at least one for training
+
+    rng = random.Random(_HOLDOUT_SEED)
+    test_indices = set(rng.sample(range(n), n_test))
+
+    train = [m for i, m in enumerate(market_defs) if i not in test_indices]
+    test = [m for i, m in enumerate(market_defs) if i in test_indices]
+    return train, test
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run strategy competition across all markets in a tag")
+    parser = argparse.ArgumentParser(
+        description="Run strategy competition across markets in a category"
+    )
     parser.add_argument("--tag", default="soccer", help="Market category tag")
     parser.add_argument("--freq", default="5min", help="Bar frequency")
     parser.add_argument("--cash", type=float, default=1000.0, help="Initial cash per market")
     parser.add_argument("--db", default="data/cache.db", help="SQLite cache path")
     parser.add_argument("--min-bars", type=int, default=_MIN_BARS, help="Minimum bars to include a market")
     parser.add_argument("--max-markets", type=int, default=_MAX_MARKETS, help="Max markets to test on")
+    parser.add_argument(
+        "--holdout-fraction", type=float, default=0.2,
+        help="Fraction of markets held out for final evaluation (default: 0.2). "
+             "Set to 0 to disable holdout and test on all markets.",
+    )
+    parser.add_argument(
+        "--eval", action="store_true",
+        help="Evaluate on the held-out test set instead of the training set. "
+             "For final submission only — do NOT use during development.",
+    )
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
+
+    if args.eval and args.holdout_fraction <= 0:
+        print("Error: --eval requires --holdout-fraction > 0")
+        sys.exit(1)
 
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING)
 
@@ -122,18 +170,41 @@ def main():
             print(f"No markets with >= {args.min_bars} bars of trade data for tag '{args.tag}'.")
             sys.exit(1)
 
-        print(f"Testing {len(market_defs)} markets ({args.min_bars}+ bars each)")
+        # Split into train / test (or use all markets if holdout is disabled)
+        if args.holdout_fraction > 0:
+            train_defs, test_defs = _holdout_split(market_defs, args.holdout_fraction)
+
+            if args.eval:
+                if len(test_defs) < 3:
+                    print(
+                        f"Error: only {len(test_defs)} test markets (need ≥3). "
+                        f"Increase --max-markets (currently {args.max_markets})."
+                    )
+                    sys.exit(1)
+                run_defs = test_defs
+                mode_label = "TEST SET"
+                lb_category = f"{args.tag}_test"
+            else:
+                run_defs = train_defs
+                mode_label = "TRAINING SET"
+                lb_category = f"{args.tag}_train"
+        else:
+            run_defs = market_defs
+            mode_label = "ALL MARKETS"
+            lb_category = args.tag
+
+        print(f"Running on {len(run_defs)} markets [{mode_label}]")
         print(f"Strategies: {len(list_strategies())}")
         print()
 
-        runner = CompetitionRunner(market_defs, initial_cash=args.cash)
+        runner = CompetitionRunner(run_defs, initial_cash=args.cash)
         result = runner.run(list_strategies())
 
-        print_comparison_report(result)
+        print_comparison_report(result, mode=mode_label)
 
         lb = Leaderboard("data/leaderboard.db")
         for name, metrics in result.aggregate_metrics.items():
-            lb.record_aggregate(metrics, name, category=args.tag)
+            lb.record_aggregate(metrics, name, category=lb_category)
         lb.close()
 
 

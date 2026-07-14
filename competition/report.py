@@ -6,9 +6,13 @@ from rich.table import Table
 from competition.runner import ComparisonResult
 
 
-def print_comparison_report(result: ComparisonResult, console: Console | None = None) -> None:
+def print_comparison_report(result: ComparisonResult, console: Console | None = None, mode: str = "") -> None:
     console = console or Console()
-    console.rule("[bold cyan]Competition Results[/bold cyan]")
+    title = "[bold cyan]Competition Results"
+    if mode:
+        title += f"  —  {mode}"
+    title += "[/bold cyan]"
+    console.rule(title)
     console.print(f"Markets: {len(result.markets)}  Cash/ market: ${result.initial_cash:.0f}")
     console.print()
 

@@ -41,18 +41,18 @@ Record which tag you chose — you'll use them later.
 
 ## Step 3: Run the baseline competition
 
-The competition tests every strategy on **every resolved past market** in the category with enough trade data. A strategy that only wins on one market will not rank well — it must perform consistently across many markets.
+Markets are split into a **training set** (80%) for development and a **test set** (20%) for final evaluation. You iterate on the training set. The test set is locked — you never see it until the final `--eval` run. This prevents overfitting: tuning hyperparameters against the exact markets you're scored on would inflate your backtest returns.
 
-Run the competition on the tag with data:
+Run the baseline competition on the tag with data:
 ```bash
-python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 20
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 25
 ```
 
-Replace `soccer` with whichever tag succeeded. Record:
-- The current leader's Total Return, Win Rate, and Avg Sharpe across all markets
-- This aggregate score is what you must beat
+Replace `soccer` with whichever tag succeeded. The report will say `[TRAINING SET]`. Record:
+- The current leader's Total Return, Win Rate, and Avg Sharpe on the **training set**
+- This is the baseline you must improve during development
 
-Flags: `--min-bars` (default 20) filters out markets with too few bars. `--max-markets` (default 50) limits how many markets to test on.
+Flags: `--min-bars` (default 20) filters out markets with too few bars. `--max-markets` (default 50) limits how many markets to test on. `--holdout-fraction` (default 0.2) controls the train/test split — keep the default.
 
 Read the previous agent's summaries of their strategies in the agent_summaries directory. If it is empty, you're the first one. If it's not empty, make sure to stay away from things that are too similar to avoid directly competing.
 
@@ -115,30 +115,38 @@ register(StrategyRecord(
 ))
 ```
 
-Run the competition (tests every strategy on **all markets** in the tag):
+Run the competition (tests every strategy on the **training set** — test markets are held out):
 ```bash
-python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 20
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 25
 ```
 
 ## Step 7: Iterate
 
-Judging is based on the **aggregate leaderboard** — Total Return across all markets, Win Rate, and Avg Sharpe. A strategy that wins big on one market but loses on five others will rank below one that makes small steady profits on every market.
+Judging is based on the **aggregate leaderboard** — Total Return, Win Rate, and Avg Sharpe. A strategy that wins big on one market but loses on five others will rank below one that makes small steady profits on every market.
 
-- If your strategy's aggregate Total Return beats the current leader → try to improve it further
+**IMPORTANT — The holdout rule:** The competition splits markets into training (80%) and test (20%) sets. During iteration you only see training-set results. The `--eval` flag reveals the test set, which is your final score.
+
+- Never use `--eval` during development. If you do, you are looking at the test set — you will overfit to it and your final score will not reflect real performance. The honest workflow: iterate on training, submit once on test.
+- If your strategy's aggregate Total Return beats the current leader on the training set → try to improve it further
 - If it doesn't → create a new one. Try different indicators, parameter combinations, or a different approach entirely
 - Try wrapping with cash-out: `with_cash_out(MyStrategy(), take_profit_pct=0.20, stop_loss_pct=-0.25)`
 - Try different categories — your strategy might dominate in crypto but not soccer
-- Use `--max-markets 50` for a broad test (your final test must be with 50 tests, otherwise, you have not truly beaten your competitors) or `--max-markets 5` for a quick sanity check
+- Use `--max-markets 50` for a broad test (your final test must be with 50 markets, otherwise, you have not truly beaten your competitors) or `--max-markets 10` for a quick sanity check
 - Stop when no improvement has been made for 3 consecutive rounds
 
 ## Step 8: Deliver
 
-Print the final results:
+Run the competition on the **test set** for your final score:
+```bash
+python scripts/sandbox_run.py --tag soccer --freq 5min --cash 1000 --max-markets 50 --eval
+```
+
+The report will say `[TEST SET]` — this is your official score. Print the final results:
 - The winning strategy code
-- Its return and Sharpe vs every competitor
+- Its test-set Total Return, Win Rate, and Avg Sharpe vs every competitor
 - The key insight that made it work
 
-Make sure to write this in `agent_summaries/AGENT_<the current maximum number in there+1>.md`. If there is not a single file in there, start it at `AGENT_0.md`. If there is already a file there, format everything in a similar way as it.
+Make sure to write this in `agent_summaries/AGENT_<the current maximum number in there+1>.md`. If there is not a single file in there, start it at `AGENT_0.md`. If there is already a file there, format everything in a similar way as it. Include the exact command used for the final run (including `--eval`).
 
 ---
 

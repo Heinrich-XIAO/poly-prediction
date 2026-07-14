@@ -40,7 +40,7 @@ function cryptoUrl(time: number): string {
 }
 
 const tradeSem = new (class {
-  max = 4; pending = 0; queue: Array<() => void> = [];
+  max = 15; pending = 0; queue: Array<() => void> = [];
   async acquire() {
     if (this.pending < this.max) { this.pending++; return; }
     await new Promise<void>((r) => this.queue.push(r));
@@ -59,7 +59,7 @@ async function fetchAllTrades(conditionId: string, signal: AbortSignal): Promise
     const result = await Promise.race([
       fetchTradesPages(conditionId, signal),
       new Promise<any[]>((_, reject) =>
-        setTimeout(() => reject(new Error("trade sem timeout")), 50000)
+        setTimeout(() => reject(new Error("trade sem timeout")), 60000)
       ),
     ]);
     return result;
@@ -70,18 +70,22 @@ async function fetchAllTrades(conditionId: string, signal: AbortSignal): Promise
 
 async function fetchTradesPages(conditionId: string, signal: AbortSignal): Promise<any[]> {
   const allTrades: any[] = [];
-  const paginator = await client.listTrades({ market: [conditionId], pageSize: 100 });
   let pages = 0;
-  for await (const page of paginator) {
-    allTrades.push(...page.items);
-    if (signal.aborted || ++pages >= 10) break;
+  try {
+    const paginator = await client.listTrades({ market: [conditionId], pageSize: 100 });
+    for await (const page of paginator) {
+      allTrades.push(...page.items);
+      if (signal.aborted || ++pages >= 10) break;
+    }
+  } catch (e) {
+    if (allTrades.length === 0) throw e;
   }
   return allTrades;
 }
 
 async function downloadOne(slug: string, time: number): Promise<any> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 30000);
+  const timer = setTimeout(() => controller.abort(), 60000);
   const signal = controller.signal;
 
   try {
@@ -177,42 +181,41 @@ async function main() {
   const concurrency = 50;
   let done = 0;
   let noData = 0;
-  let errorSlugs: string[] = [];
+  const errors: string[] = [];
+  let nextIndex = 0;
 
   process.stderr.write(`\x1b[36m::\x1b[0m Snapshotting ${total} BTC hourly markets\n`);
+  pacmanBar(0, total, "starting");
 
-  for (let i = 0; i < slugs.length; i += concurrency) {
-    const batch = slugs.slice(i, i + concurrency);
-
-    const results = await Promise.allSettled(
-      batch.map(async ({ slug, time }) => {
-        const data = await downloadWithRetry(slug, time);
-        if (data) {
-          await Bun.write(`data/${slug}.json`, JSON.stringify(data, null, 2));
-        }
-        return { slug: slug, ok: data !== null };
-      })
-    );
-
-    for (let j = 0; j < results.length; j++) {
-      const r = results[j]!;
-      if (r.status === "fulfilled") {
-        done++;
-        if (!r.value.ok) noData++;
-        pacmanBar(done, total, r.value.slug);
+  async function processOne(slug: string, time: number) {
+    try {
+      const data = await downloadWithRetry(slug, time, 3);
+      if (data) {
+        await Bun.write(`data/${slug}.json`, JSON.stringify(data, null, 2));
       } else {
-        done++;
-        errorSlugs.push(batch[j]!.slug);
+        noData++;
       }
+    } catch {
+      errors.push(slug);
     }
+    pacmanBar(++done, total, slug);
   }
+
+  await Promise.all(
+    Array.from({ length: concurrency }, async () => {
+      while (nextIndex < slugs.length) {
+        const idx = nextIndex++;
+        const entry = slugs[idx]!;
+        await processOne(entry.slug, entry.time);
+      }
+    })
+  );
 
   // Retry errored slugs
   let retried = 0;
-  for (const slug of errorSlugs) {
-    if (slug === "unknown") { noData++; continue; }
+  for (const slug of errors) {
     const entry = slugs.find((s) => s.slug === slug);
-    if (!entry) { noData++; continue; }
+    if (!entry) continue;
     try {
       const data = await downloadWithRetry(entry.slug, entry.time, 5);
       if (data) {
